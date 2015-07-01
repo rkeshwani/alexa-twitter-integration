@@ -1,13 +1,8 @@
 {
   "intents": [
     {
-      "intent": "TopSellers",
-      "slots": [
-        {
-          "name": "Category",
-          "type": "LITERAL"
-        }
-      ]
+      "intent": "Trends",
+      "slots": []
     },
     {
       "intent": "HearMore",

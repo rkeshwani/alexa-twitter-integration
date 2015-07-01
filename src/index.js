@@ -147,6 +147,16 @@ var SPOKEN_NAME_TO_CATEGORY = {
 };
 
 /**
+ * Twitter API Keys
+ **/
+var TWITTER_CONFIG = {
+        "consumerKey": "JunpXLhBfQgOHJZkYTs7maoIb",
+        "consumerSecret": "0Df7HilbFpgjsR83qC1Ley4HgrdlSK3a7xuWq7RzgIJtDLAwLc",
+        "accessToken": "18916219-CqOZRf8zbS77PMuYEc6BXjqasq49arllrG3AzHbJM",
+        "accessTokenSecret": "ZBQ3Ww4068CFhRdKDaXq7Juluby0y3Xy5hEivBlpj1noA"
+        //"callBackUrl": "XXX"
+    }, twitterClient = null;
+/**
  * The AlexaSkill prototype and helper functions
  */
 var AlexaSkill = require('./AlexaSkill');
@@ -157,40 +167,47 @@ var AlexaSkill = require('./AlexaSkill');
 var aws = require("aws-lib");
 
 /**
- * SavvyConsumer is a child of AlexaSkill.
+ * Use the Twitter library
+ */
+var Twitter = require("twitter-node-client");
+
+
+/**
+ * TwitterSkill is a child of AlexaSkill.
  * To read more about inheritance in JavaScript, see the link below.
  *
  * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Introduction_to_Object-Oriented_JavaScript#Inheritance
  */
-var SavvyConsumer = function () {
+var TwitterSkill = function () {
     AlexaSkill.call(this, APP_ID);
 };
 
 // Extend AlexaSkill
-SavvyConsumer.prototype = Object.create(AlexaSkill.prototype);
-SavvyConsumer.prototype.constructor = SavvyConsumer;
+TwitterSkill.prototype = Object.create(AlexaSkill.prototype);
+TwitterSkill.prototype.constructor = TwitterSkill;
 
-SavvyConsumer.prototype.eventHandlers.onSessionStarted = function (sessionStartedRequest, session) {
-    console.log("SavvyConsumer onSessionStarted requestId: " + sessionStartedRequest.requestId
+TwitterSkill.prototype.eventHandlers.onSessionStarted = function (sessionStartedRequest, session) {
+    console.log("TwitterSkill onSessionStarted requestId: " + sessionStartedRequest.requestId
         + ", sessionId: " + session.sessionId);
-
+    twitterClient = new Twitter(TWITTER_CONFIG);
+    
     // any session init logic would go here
 };
 
-SavvyConsumer.prototype.eventHandlers.onLaunch = function (launchRequest, session, response) {
-    console.log("SavvyConsumer onLaunch requestId: " + launchRequest.requestId + ", sessionId: " + session.sessionId);
+TwitterSkill.prototype.eventHandlers.onLaunch = function (launchRequest, session, response) {
+    console.log("TwitterSkill onLaunch requestId: " + launchRequest.requestId + ", sessionId: " + session.sessionId);
     getWelcomeResponse(response);
 };
 
-SavvyConsumer.prototype.eventHandlers.onSessionEnded = function (sessionEndedRequest, session) {
-    console.log("SavvyConsumer onSessionEnded requestId: " + sessionEndedRequest.requestId
+TwitterSkill.prototype.eventHandlers.onSessionEnded = function (sessionEndedRequest, session) {
+    console.log("TwitterSkill onSessionEnded requestId: " + sessionEndedRequest.requestId
         + ", sessionId: " + session.sessionId);
 
     // any session cleanup logic would go here
 };
 
-SavvyConsumer.prototype.intentHandlers = {
-    TopSellers: function (intent, session, response) {
+TwitterSkill.prototype.intentHandlers = {
+    Trends: function (intent, session, response) {
         getTopSellers(intent, session, response);
     },
 
@@ -206,106 +223,14 @@ SavvyConsumer.prototype.intentHandlers = {
         helpTheUser(intent, session, response);
     }
 };
-
 /**
  * Returns the welcome response for when a user invokes this skill.
  */
 function getWelcomeResponse(response) {
     // If we wanted to initialize the session to have some attributes we could add those here.
-    var speechOutput = "Welcome to the Savvy Consumer. For which category do you want to hear the best sellers?";
-    var repromptText = "Please choose a category by saying, "
-        + "books, fashion, movie, kitchen";
-
-    response.ask(speechOutput, repromptText);
+    var speechOutput = "Here are the top trendng topics in your Area.";
+    response.tell(speechOutput);
 }
-
-/**
- * Gets the top sellers from Amazon.com for the given category and responds to the user.
- */
-function getTopSellers(intent, session, response) {
-    var speechOutput = "";
-    var repromptText = "";
-
-    // Check if we are in a session, and if so then reprompt for yes or no
-    if (session.attributes[KEY_CURRENT_INDEX]) {
-        speechOutput = "Would you like to hear more?";
-        repromptText = "Would you like to hear more top sellers? Please say yes or no.";
-        response.ask(speechOutput, repromptText);
-        return;
-    }
-
-    var categorySlot = intent.slots.Category;
-
-    // Find the lookup word for the given category.
-    var lookupCategory = getLookupWord(categorySlot);
-    // Remove the periods to fix things like d. v. d.s to dvds
-    var category = categorySlot.value.replace(/\.\s*/g, '');
-
-    if (lookupCategory) {
-        // Create the the client to access the top sellers API
-        var amazonCatalogClient = aws.createProdAdvClient(AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_ASSOCIATES_TAG);
-
-        // Make the call with the proper category and browse node.
-        amazonCatalogClient.call("ItemSearch", {
-            SearchIndex: lookupCategory,
-            BrowseNode: BROWSE_NODE_MAP[lookupCategory]
-        }, function (err, result) {
-            if (err) {
-                // There was an error trying to fetch the top sellers from Amazon.
-                console.log('An error occured', err);
-                speechOutput = "I'm sorry, I cannot get the top sellers for " + category + " at this" +
-                    " time. Please try again later. Goodbye.";
-                response.tell(speechOutput);
-                return;
-            }
-
-            // Configure the card and speech output.
-            var cardTitle = "Top Sellers for " + category;
-            var cardOutput = "The Top Sellers for " + category + " are: ";
-            speechOutput = "Here are the top sellers for " + category + ". ";
-            session.attributes[KEY_CURRENT_CATEGORY] = category;
-
-            // Iterate through the response and set the intial response, as well as the
-            // session attributes for pagination.
-            var i = 0;
-            for (var item in result.Items.Item) {
-                var numberInList = i + 1;
-                if (numberInList == 1) {
-                    // Set the speech output and the current index for the first n items.
-                    speechOutput = speechOutput + "The top seller is: " +
-                        result.Items.Item[item].ItemAttributes.Title + ". ";
-                    session.attributes[KEY_CURRENT_INDEX] = numberInList;
-                }
-
-                // Set the session attributes and full card output
-                session.attributes[i] = result.Items.Item[item].ItemAttributes.Title;
-                cardOutput = cardOutput + numberInList + ". " + result.Items.Item[item].ItemAttributes.Title + ".";
-                i++;
-            }
-
-            if (i == 0) {
-                // There were no items returned for the specified item.
-                speechOutput = "I'm sorry, I cannot get the top sellers for " + category
-                    + " at this time. Please try again later. Goodbye.";
-                response.tell(speechOutput);
-                return;
-            }
-
-            speechOutput = speechOutput + " Would you like to hear the rest?";
-            repromptText = "Would you like to hear the rest? Please say yes or no.";
-            response.askWithCard(speechOutput, repromptText, cardTitle, cardOutput);
-            return;
-        })
-    } else {
-
-        // The category didn't match one of our predefined categories. Reprompt the user.
-        speechOutput = "I'm not sure what the category is, please try again";
-        repromptText = "I'm not sure what the category is, you can say "
-            + "books, fashion, movie, kitchen...";
-        response.ask(speechOutput, repromptText);
-    }
-}
-
 /**
  * Gets the next page of items based on information saved in the session.
  */
@@ -407,6 +332,6 @@ function helpTheUser(intent, session, response) {
 
 // Create the handler that responds to the Alexa Request.
 exports.handler = function (event, context) {
-    var savvyConsumer = new SavvyConsumer();
-    savvyConsumer.execute(event, context);
+    var twitterSkill = new TwitterSkill();
+    twitterSkill.execute(event, context);
 };
