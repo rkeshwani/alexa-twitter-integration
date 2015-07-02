@@ -169,7 +169,7 @@ var aws = require("aws-lib");
 /**
  * Use the Twitter library
  */
-var Twitter = require("twitter-node-client");
+var Twitter = require("twitter-node-client").Twitter;
 
 
 /**
@@ -196,7 +196,9 @@ TwitterSkill.prototype.eventHandlers.onSessionStarted = function (sessionStarted
 
 TwitterSkill.prototype.eventHandlers.onLaunch = function (launchRequest, session, response) {
     console.log("TwitterSkill onLaunch requestId: " + launchRequest.requestId + ", sessionId: " + session.sessionId);
-    getWelcomeResponse(response);
+    getTrends(response);
+    
+    
 };
 
 TwitterSkill.prototype.eventHandlers.onSessionEnded = function (sessionEndedRequest, session) {
@@ -208,7 +210,7 @@ TwitterSkill.prototype.eventHandlers.onSessionEnded = function (sessionEndedRequ
 
 TwitterSkill.prototype.intentHandlers = {
     Trends: function (intent, session, response) {
-        getTopSellers(intent, session, response);
+        getTrends(intent, session, response);
     },
 
     HearMore: function (intent, session, response) {
@@ -226,96 +228,26 @@ TwitterSkill.prototype.intentHandlers = {
 /**
  * Returns the welcome response for when a user invokes this skill.
  */
-function getWelcomeResponse(response) {
-    // If we wanted to initialize the session to have some attributes we could add those here.
-    var speechOutput = "Here are the top trendng topics in your Area.";
-    response.tell(speechOutput);
-}
-/**
- * Gets the next page of items based on information saved in the session.
- */
-function getNextPageOfItems(intent, session, response) {
-    var sessionAttributes = session.attributes;
 
-    if (sessionAttributes[KEY_CURRENT_INDEX]) {
-        var current = sessionAttributes[KEY_CURRENT_INDEX];
-        var speechOutput = "";
-
-        // Iterate through the session attributes to create the next n results for the user.
-        for (var i = 0; i < PAGINATION_SIZE; i++) {
-            if (sessionAttributes[current]) {
-                var numberInList = current + 1;
-                if (current < MAX_ITEMS - 1) {
-                    speechOutput = speechOutput + ARRAY_FOR_ORDINAL_SPEECH[numberInList] + ". "
-                        + sessionAttributes[current] + ". ";
-                } else {
-                    speechOutput = speechOutput + "And the " + ARRAY_FOR_ORDINAL_SPEECH[numberInList] + " top seller is. "
-                        + sessionAttributes[current] + ". Those were the 10 top sellers in Amazon's "
-                        + sessionAttributes[KEY_CURRENT_CATEGORY] + " department";
-                }
-                current = current + 1;
+function getTrends(response) {  
+    var trendString = "Here are the top trendng topics in your Area.";
+    twitterClient.getCustomApiCall('/trends/place.json',{"id":23424977},
+        function (err,response,body) {
+            trendString = "There was an error.";
+        },
+        function (data) {
+            data = JSON.parse(data);
+            //trendString = data[0].trends[0].name;
+            for(var i = 0; i< 9; i++) {
+                trendString = trendString +", "+ data[0].trends[i].name;
             }
+        response.tell(trendString);    
         }
-
-        // Set the new index and end the session if the newIndex is greater than the MAX_ITEMS
-        sessionAttributes[KEY_CURRENT_INDEX] = current;
-        var endSession = false;
-        if (current < MAX_ITEMS) {
-            speechOutput = speechOutput + " Would you like to hear more?";
-            response.ask(speechOutput, "Would you like to hear more top sellers? Please say yes or no.");
-        } else {
-            response.tell(speechOutput);
-        }
-    } else {
-        // The user attempted to get more results without ever uttering the category.
-        // Reprompt the user for the proper usage.
-        var speechOutput = "Welcome to the Savvy Consumer. For which category do you want to hear the best sellers?.";
-        var repromptText = "Please choose a category by saying, "
-            + "books, fashion, movie, kitchen";
-        response.ask(speechOutput, repromptText);
-    }
+    );
+    
 }
 
-/**
- * Gets the lookup word based on the input category slot. The lookup word will be from the BROWSE_NODE_MAP and will
- * attempt to get an exact match. However, if no exact match exists then the function will check for a contains.
- * @param categorySlot the input category slot
- * @returns {string} the lookup word for the BROWSE_NODE_MAP
- */
-function getLookupWord(categorySlot) {
-    var lookupCategory;
-    if (categorySlot && categorySlot.value) {
-        // Lower case the incoming slot and remove spaces
-        var category = categorySlot.value.toLowerCase().replace(/ /g, '').replace(/\./g, '').replace(/three/g, '3');
-        var keys = Object.keys(BROWSE_NODE_MAP);
 
-        //Check for spoken names
-        lookupCategory = SPOKEN_NAME_TO_CATEGORY[category];
-
-        if (!lookupCategory) {
-            // Iterate through the keys in the BROWSE_NODE_MAP and look for a perfect match. The items in the
-            // BROWSE_NODE_MAP must be cased properly for the API call to get the top sellers.
-            keys.forEach(function (item) {
-                if (item.toLowerCase() === category) {
-                    lookupCategory = item;
-                    return;
-                }
-            });
-        }
-
-        if (!lookupCategory) {
-            // There was no perfect match, try to see if we can perform an indexOf.
-            // This will help if the user says DVDs and the actual category is DVD.
-            keys.forEach(function (item) {
-                if (item.toLowerCase().indexOf(category) > -1 || category.indexOf(item.toLowerCase()) > -1) {
-                    lookupCategory = item;
-                    return;
-                }
-            })
-        }
-    }
-    return lookupCategory;
-}
 
 /**
  * Instructs the user on how to interact with this skill.
